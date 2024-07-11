@@ -20,15 +20,55 @@ const create = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, task, "Task Created Successfully"));
 });
 const getAll = asyncHandler(async (req, res) => {
-  const userID = req.user._id;
-  const task = await Tasks.find({
-    userId: userID,
-  });
-  return res.status(201).json(new ApiResponse(200, task, ""));
+  const userId = req.user._id;
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = parseInt(req.query.pageSize) || 10;
+  const sortOrder = req.query.sortOrder || "desc";
+  const sortBy = req.query.sortBy || "dueDate";
+  const title = req.query.title;
+  const dueDate = req.query.dueDate;
+
+  const totalCount = await Tasks.countDocuments({ userId });
+  const totalPages = Math.ceil(totalCount / pageSize);
+  const sortOptions = {};
+  sortOptions[sortBy] = sortOrder === "asc" ? 1 : -1;
+
+  const filters = {
+    userId,
+  };
+  if (req.query.status) {
+    filters.status = req.query.status;
+  }
+  if (title) {
+    filters.title = { $regex: title, $options: "i" };
+  }
+
+  if (dueDate) {
+    filters.dueDate = { $gte: new Date(dueDate) };
+  }
+
+  const task = await Tasks.find(filters)
+    .sort(sortOptions)
+    .skip((page - 1) * pageSize)
+    .limit(pageSize)
+    .exec();
+  const meta = {
+    totalCount,
+    page,
+    pageSize,
+    totalPages,
+    lastPage: page === totalPages,
+  };
+
+  const sendRes = {
+    data: task,
+    meta,
+  };
+
+  return res.status(201).json(new ApiResponse(200, sendRes, ""));
 });
 const getSingle = asyncHandler(async (req, res) => {
   const taskId = req.params.id;
-  // const userID = req.user._id;
   const task = await Tasks.findById(taskId);
   if (!task) {
     throw new ApiError(400, "Task not found");
